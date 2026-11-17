@@ -1,0 +1,23 @@
+# Dependencias de Node.js
+node_modules/
+**/node_modules/
+npm-debug.log*
+
+# Variables de entorno locales
+.env
+**/.env
+
+# Caché de Python y archivos compilados temporales
+__pycache__/
+*.py[cod]
+*.o
+
+# Archivos temporales de Microsoft Office / Word
+~$*
+*.tmp
+*.bak
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
