@@ -1,0 +1,335 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_mixer.h>
+#include "bomb.h"
+#include "bomberman.h"
+#include "board.h"
+#include "assets.h"
+#include "graphic_param.h"
+#include "bonus.h"
+#include "db_telemetry.h"
+
+#define WIDTH 480
+#define HEIGHT 480
+
+#define FRAME_PER_WALK_ANIMATION 3
+#define NB_FRAME 5
+#define ANIMATION_SPEED 350
+#define NB_BOMBERMAN 4
+
+#define TIMER 150
+#define TIMER_EXPLOSION 20
+
+BOMB *init_bomb(int x, int y, int power, int *bomberman_bomb_left)
+{
+	BOMB *bomb;
+	bomb = malloc(sizeof(BOMB));
+	bomb->x = x;
+	bomb->y = y;
+	bomb->bomberman_bomb_left = bomberman_bomb_left;
+	bomb->has_explode = SDL_FALSE;
+	bomb->timer = TIMER;
+	bomb->power = power;
+	bomb->sprite.x = 0;
+	bomb->sprite.y = 96;
+	bomb->sprite.w = 16;
+	bomb->sprite.h = 17;
+	bomb->up = bomb->down = bomb->right = bomb->left = 0;
+	(*bomb->bomberman_bomb_left)--;
+	return bomb;
+}
+
+void update_bomb_idle_animation(BOMB *bomb)
+{
+	Uint32 sprite = (SDL_GetTicks() / ANIMATION_SPEED) % FRAME_PER_WALK_ANIMATION;
+	bomb->sprite.x = (sprite * bomb->sprite.w);
+}
+
+void update_bomb(BOARD *board, BOMB *bomb)
+{
+	if(!bomb->has_explode){
+		update_bomb_idle_animation(bomb);
+	} else {
+		update_damages(board, bomb);
+	}
+	bomb->timer --;
+}
+
+SDL_bool render_bomb(BOARD *board, BOMB *bomb, int current_y, int current_x, int counter_pos,
+		DIRECTION direction, void *extra_parameters)
+{
+	GRAPHIC_PARAM *g_param = (GRAPHIC_PARAM *)(extra_parameters);
+
+	SDL_Point center = {g_param->assets->explosion.w/2, g_param->assets->explosion.h/2};
+	SDL_RendererFlip flip = SDL_FLIP_NONE;
+
+	float angle;
+	int current_frame;
+	SDL_bool needRenderEx = SDL_FALSE;
+
+	current_frame = (int)(bomb->timer/(TIMER_EXPLOSION/NB_FRAME));
+
+	angle = 0;
+	g_param->draw_pos->y = current_y * (HEIGHT/board->l_size);
+	g_param->draw_pos->x = current_x * (WIDTH/board->c_size);
+
+	g_param->assets->explosion.x = 175 + ((NB_FRAME - current_frame - 1) * g_param->assets->explosion.w);
+	g_param->assets->explosion.y = 115;
+
+	switch(direction){
+	case UP:
+		if(counter_pos > bomb->up){
+			return SDL_FALSE;
+		}
+		else if(counter_pos == bomb->up){
+			needRenderEx = SDL_TRUE;
+		}
+		break;
+	case LEFT:
+		if(counter_pos > bomb->left){
+			return SDL_FALSE;
+		}
+		else if(counter_pos == bomb->left){
+			needRenderEx = SDL_TRUE;
+		}
+		angle = 90.0f;
+		center.x = g_param->assets->explosion.w;
+		center.y = g_param->assets->explosion.h;
+		flip = SDL_FLIP_VERTICAL;
+		break;
+	case RIGHT:
+		if(counter_pos > bomb->right){
+			return SDL_FALSE;
+		}
+		else if(counter_pos == bomb->right){
+			needRenderEx = SDL_TRUE;
+		}
+		angle = 90.0;
+		center.x = g_param->assets->explosion.w/2;
+		center.y = g_param->assets->explosion.h/2;
+		break;
+	case DOWN:
+		if(counter_pos > bomb->down){
+			return SDL_FALSE;
+		}
+		else if(counter_pos == bomb->down){
+			needRenderEx = SDL_TRUE;
+		}
+		flip = SDL_FLIP_VERTICAL;
+		break;
+	case CENTER:
+		g_param->assets->explosion.y = 131;
+		break;
+	default: break;
+	}
+
+	if(counter_pos == bomb->power || (direction != CENTER && board->grid[current_y][current_x].bomb != NULL)){
+		needRenderEx = SDL_TRUE;
+	}
+
+	if(needRenderEx){
+		g_param->assets->explosion.y = 99;
+		SDL_RenderCopyEx(g_param->renderer, g_param->assets->spritesheet, &g_param->assets->explosion , g_param->draw_pos,
+				angle, &center, flip);
+		return SDL_FALSE;
+	} else {
+		SDL_RenderCopyEx(g_param->renderer, g_param->assets->spritesheet, &g_param->assets->explosion , g_param->draw_pos,
+				angle, &center, flip);
+	}
+
+	return SDL_TRUE;
+}
+
+void render_bombs(GRAPHIC_PARAM *g_param, BOARD *board)
+{
+	int i, j;
+
+	BOMB *bomb;
+	for (i = 0; i < board->l_size; i++){
+		g_param->draw_pos->y = i * (HEIGHT/board->l_size);
+		for (j = 0; j < board->c_size; j++){
+			g_param->draw_pos->x = j * (WIDTH/board->c_size);
+			bomb = board->grid[i][j].bomb;
+			if(bomb != NULL){
+				if(bomb->has_explode){
+					function_around_bomb(board, bomb, (void*)g_param, (*render_bomb));
+				}
+				else {
+					SDL_RenderCopy(g_param->renderer, g_param->assets->spritesheet, &bomb->sprite, g_param->draw_pos);
+				}
+			}
+		}
+	}
+}
+
+int can_drop_bomb(BOARD *board, BOMBERMAN *bomberman)
+{
+	int x, y;
+	x = from_pixel_to_grid_coord(board, bomberman->x, 1);
+	y = from_pixel_to_grid_coord(board, bomberman->y, 0);
+
+	return (bomberman->bomb_left > 0 && board->grid[y][x].bomb == NULL);
+}
+
+void drop_bomb(BOARD *board, BOMBERMAN *bomberman)
+{
+	int x, y;
+
+	x = from_pixel_to_grid_coord(board, bomberman->x, 1);
+	y = from_pixel_to_grid_coord(board, bomberman->y, 0);
+
+	board->grid[y][x].bomb = init_bomb(x, y, bomberman->bomb_power, &bomberman->bomb_left);
+}
+
+void free_bomb(BOARD *board, BOMB *bomb)
+{
+	board->grid[bomb->y][bomb->x].bomb = NULL;
+	free(bomb);
+}
+
+SDL_bool explode_cell(BOARD *board, BOMB *bomb, int current_y, int current_x, int counter_pos,
+		DIRECTION direction, void *extra_parameters)
+{
+	BOMB *possible_bomb = board->grid[current_y][current_x].bomb;
+	ASSETS *assets = (ASSETS *)(extra_parameters);
+
+	switch(direction){
+	case UP: if(counter_pos > bomb->up) bomb->up = counter_pos; break;
+	case DOWN: if(counter_pos > bomb->down) bomb->down = counter_pos; break;
+	case RIGHT: if(counter_pos > bomb->right) bomb->right = counter_pos; break;
+	case LEFT: if(counter_pos > bomb->left) bomb->left = counter_pos; break;
+	default: break;
+	}
+
+	if(board->grid[current_y][current_x].bonus != NULL){
+		free(board->grid[current_y][current_x].bonus);
+		board->grid[current_y][current_x].bonus = NULL;
+	}
+
+	if(direction != CENTER && possible_bomb != NULL ){
+		if(!possible_bomb->has_explode){
+			explode_around(board, possible_bomb, assets, NULL);
+		}
+		return SDL_FALSE;
+	}
+
+	if(board->grid[current_y][current_x].type != GROUND){
+		if(board->grid[current_y][current_x].type == WALL_BREAKABLE){
+			board->grid[current_y][current_x].type = GROUND;
+			g_db_ctx.muros_destruidos++;
+			g_db_ctx.puntos_partida += 25;
+
+			if(rand()%8 == 0){
+				spawn_bonus(board, assets, current_y, current_x);
+			}
+		} else{
+			switch(direction){
+			case UP: bomb->up--;break;
+			case DOWN:bomb->down--;	break;
+			case RIGHT: bomb->right--; break;
+			case LEFT: bomb->left--; break;
+			default: break;
+			}
+		}
+		return SDL_FALSE;
+	}
+
+	return SDL_TRUE;
+}
+
+void explode_around(BOARD *board, BOMB *bomb, ASSETS *assets, Mix_Chunk *sound_explosion)
+{
+	bomb->has_explode = SDL_TRUE;
+	bomb->timer = TIMER_EXPLOSION;
+	(*bomb->bomberman_bomb_left)++;
+
+	if(sound_explosion != NULL){
+		Mix_PlayChannelTimed(0, sound_explosion, 0, 0);
+	}
+	function_around_bomb(board, bomb, (void*)assets, (*explode_cell));
+}
+
+SDL_bool handle_damages(BOARD *board, BOMB *bomb, int current_y, int current_x, int counter_pos,
+		DIRECTION direction, void *extra_parameters)
+{
+	int i;
+
+	switch(direction){
+	case UP: if(counter_pos > bomb->up) return SDL_FALSE; break;
+	case DOWN: if(counter_pos > bomb->down) return SDL_FALSE; break;
+	case RIGHT: if(counter_pos > bomb->right) return SDL_FALSE; break;
+	case LEFT: if(counter_pos > bomb->left) return SDL_FALSE;	break;
+	default: break;
+	}
+
+	for(i = 0; i < NB_BOMBERMAN; i++){
+		if(board->grid[current_y][current_x].bomberman[i] != NULL){
+			if(!board->grid[current_y][current_x].bomberman[i]->is_dead){
+				board->grid[current_y][current_x].bomberman[i]->is_dead = SDL_TRUE;
+				if(i > 0){
+					g_db_ctx.bots_eliminados++;
+					g_db_ctx.puntos_partida += 300;
+				}
+				board->grid[current_y][current_x].bomberman[i]->direction = DOWN;
+				board->grid[current_y][current_x].bomberman[i]->move_down =
+						board->grid[current_y][current_x].bomberman[i]->move_left =
+								board->grid[current_y][current_x].bomberman[i]->move_right =
+										board->grid[current_y][current_x].bomberman[i]->move_up = SDL_FALSE;
+			}
+		}
+	}
+
+	return SDL_TRUE;
+}
+
+void update_damages(BOARD *board, BOMB *bomb)
+{
+	function_around_bomb(board, bomb, NULL, (*handle_damages));
+}
+
+void function_around_bomb(BOARD *board, BOMB *bomb, void *parameters,
+		SDL_bool (*function)(BOARD *board, BOMB *bomb, int current_y, int current_x, int counter_pos,
+				DIRECTION direction, void *extra_parameters))
+{
+	int x, y, counter_pos;
+
+	counter_pos = 0;
+	(*function)(board, bomb, bomb->y, bomb->x, counter_pos, CENTER, parameters);
+
+	counter_pos = 1;
+	for(y = bomb->y - 1; counter_pos <= bomb->power; y--){
+		y = (y < 0) ? (board->l_size - 1) : y;
+		if(! (*function)(board, bomb, y, bomb->x, counter_pos, UP, parameters)){
+			break;
+		}
+		counter_pos++;
+	}
+
+	counter_pos = 1;
+	for(y = bomb->y + 1; counter_pos <= bomb->power; y++){
+		y = (y == board->l_size) ? 0 : y;
+		if(! (*function)(board, bomb, y, bomb->x, counter_pos, DOWN, parameters)){
+			break;
+		}
+		counter_pos++;
+	}
+
+	counter_pos = 1;
+	for(x = bomb->x - 1; counter_pos <= bomb->power; x--){
+		x = (x < 0) ? (board->c_size - 1): x;
+		if(! (*function)(board, bomb, bomb->y, x, counter_pos, LEFT, parameters)){
+			break;
+		}
+		counter_pos++;
+	}
+
+	counter_pos = 1;
+	for(x = bomb->x + 1; counter_pos <= bomb->power; x++){
+		x = (x == board->c_size) ? 0 : x;
+		if(! (*function)(board, bomb, bomb->y, x, counter_pos, RIGHT, parameters)){
+			break;
+		}
+		counter_pos++;
+	}
+}

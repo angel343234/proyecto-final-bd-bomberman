@@ -1,0 +1,263 @@
+@font-face {
+    font-family: 'BombermanFont';
+    src: url('/rsc/bm.ttf') format('truetype');
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #0f172a;
+    color: #f1f5f9;
+    min-height: 100vh;
+}
+
+.top-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background: #1e293b;
+    border-bottom: 2px solid #f97316;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.badge-uaa {
+    display: inline-block;
+    background: #1d4ed8;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.top-header h1 {
+    font-size: 20px;
+    color: #f8fafc;
+}
+
+.top-header h1 small {
+    font-size: 13px;
+    color: #94a3b8;
+    font-weight: 400;
+}
+
+.user-selector-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+select, input[type="text"] {
+    background: #0f172a;
+    color: #f8fafc;
+    border: 1px solid #334155;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    transition: opacity 0.15s;
+}
+
+button:hover {
+    opacity: 0.9;
+}
+
+.btn-primary { background: #f97316; color: #fff; }
+.btn-secondary { background: #2563eb; color: #fff; }
+.btn-warning { background: #eab308; color: #0f172a; }
+
+.main-layout {
+    display: grid;
+    grid-template-columns: 320px 510px 1fr;
+    gap: 16px;
+    padding: 16px 20px;
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+.panel-side {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.card h2 {
+    font-size: 14px;
+    color: #fb923c;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 6px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: #cbd5e1;
+}
+
+.btn-row {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-row button {
+    flex: 1;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.stat-item {
+    background: #0f172a;
+    padding: 6px 8px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stat-item span { color: #94a3b8; }
+.txt-green { color: #4ade80; }
+.txt-red { color: #f87171; }
+.txt-gold { color: #facc15; }
+
+.panel-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.hud-partida {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    width: 480px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+.canvas-wrapper {
+    position: relative;
+    width: 480px;
+    height: 480px;
+    border: 3px solid #f97316;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+}
+
+canvas {
+    display: block;
+    image-rendering: pixelated;
+}
+
+.status-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.78);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.status-overlay.hidden {
+    display: none;
+}
+
+.status-overlay h2 {
+    font-family: 'BombermanFont', monospace;
+    font-size: 36px;
+    color: #ff8c00;
+    margin-bottom: 12px;
+}
+
+.touch-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.touch-mid {
+    display: flex;
+    gap: 6px;
+}
+
+.btn-touch {
+    background: #334155;
+    color: #f8fafc;
+    min-width: 82px;
+}
+
+.btn-bomb {
+    background: #dc2626;
+    color: #fff;
+}
+
+.help-text {
+    font-size: 11.5px;
+    color: #94a3b8;
+    line-height: 1.4;
+}
+
+.table-scroll {
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+}
+
+th, td {
+    padding: 6px 6px;
+    text-align: left;
+    border-bottom: 1px solid #334155;
+}
+
+th {
+    background: #0f172a;
+    color: #fb923c;
+    position: sticky;
+    top: 0;
+}

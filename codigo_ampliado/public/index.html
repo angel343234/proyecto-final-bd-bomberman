@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bomberman + MySQL (ANSI/SPARC) — Equipo #13 UAA</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="top-header">
+        <div class="header-left">
+            <span class="badge-uaa">UAA · I.C.I. 5° · Bases de Datos</span>
+            <h1>💣 BOMBERMAN <small>Edición Persistente MySQL (Equipo #13)</small></h1>
+        </div>
+        <div class="header-right">
+            <div class="user-selector-box">
+                <label for="selector-usuario">Jugador Activo:</label>
+                <select id="selector-usuario"></select>
+                <input type="text" id="input-nuevo-usuario" placeholder="Nuevo usuario (ej. carlos_uaa)" />
+                <button id="btn-crear-usuario" class="btn-secondary">+ Registrar</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-layout">
+        <!-- Panel izquierdo: Configuración de Menú y Telemetría de Sesión -->
+        <section class="panel-side">
+            <div class="card">
+                <h2>⚙️ Menú de Configuración</h2>
+                <div class="form-group">
+                    <label for="selector-mapa">Escenario (MAPA_ESCENARIO):</label>
+                    <select id="selector-mapa"></select>
+                </div>
+                <div class="form-group">
+                    <label for="selector-skin">Traje (SKIN_BOMBERMAN):</label>
+                    <select id="selector-skin">
+                        <option value="0">Bomberman Blanco Clásico (y=0)</option>
+                        <option value="24">Bomberman Negro Sombra (y=24)</option>
+                        <option value="48">Bomberman Azul Cobalto (y=48)</option>
+                        <option value="72">Bomberman Rojo Carmesí (y=72)</option>
+                    </select>
+                </div>
+                <div class="btn-row">
+                    <button id="btn-iniciar-partida" class="btn-primary">▶ Nueva Partida (ESC)</button>
+                    <button id="btn-pausar-partida" class="btn-warning">⏸ Pausa (P)</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📊 Estadísticas del Jugador (Vista SQL)</h2>
+                <div class="stats-grid">
+                    <div class="stat-item"><span>ID Usuario:</span><strong id="stat-id">1</strong></div>
+                    <div class="stat-item"><span>Usuario:</span><strong id="stat-nombre">angel_munoz</strong></div>
+                    <div class="stat-item"><span>Rango:</span><strong id="stat-rango">Maestro Explosivo</strong></div>
+                    <div class="stat-item"><span>Partidas Jugadas:</span><strong id="stat-partidas">25</strong></div>
+                    <div class="stat-item"><span>Tiempo Total:</span><strong id="stat-tiempo">3420 s</strong></div>
+                    <div class="stat-item"><span>Puntos Acum.:</span><strong id="stat-puntos">6850</strong></div>
+                    <div class="stat-item"><span>Victorias:</span><strong id="stat-victorias" class="txt-green">20</strong></div>
+                    <div class="stat-item"><span>Derrotas:</span><strong id="stat-derrotas" class="txt-red">5</strong></div>
+                    <div class="stat-item"><span>Relación V/D:</span><strong id="stat-vd" class="txt-gold">4.00</strong></div>
+                    <div class="stat-item"><span>Clics / Toques:</span><strong id="stat-clics">412</strong></div>
+                    <div class="stat-item"><span>Comandos Teclado:</span><strong id="stat-teclado">1890</strong></div>
+                    <div class="stat-item"><span>Interacciones Menú:</span><strong id="stat-menu">64</strong></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🎮 Controles SDL2 / Touch</h2>
+                <p class="help-text">Usa <b>Flechas / WASD</b> para moverte, <b>ESPACIO</b> para colocar bomba, <b>P</b> para pausar, <b>ESC</b> para reiniciar, o haz clic/toque en el tablero o botones táctiles:</p>
+                <div class="touch-controls">
+                    <button class="btn-touch" data-action="UP">⬆ Arriba</button>
+                    <div class="touch-mid">
+                        <button class="btn-touch" data-action="LEFT">⬅ Izq</button>
+                        <button class="btn-touch btn-bomb" data-action="BOMB">💣 BOMBA</button>
+                        <button class="btn-touch" data-action="RIGHT">Der ➡</button>
+                    </div>
+                    <button class="btn-touch" data-action="DOWN">⬇ Abajo</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Panel central: Lienzo 480x480 fiel a jhoukem/Bomberman -->
+        <section class="panel-center">
+            <div class="hud-partida">
+                <span>⏱ Tiempo: <b id="hud-tiempo">0s</b></span>
+                <span>🏆 Puntos Partida: <b id="hud-puntos">0</b></span>
+                <span>💣 Bombas: <b id="hud-bombas">3</b></span>
+                <span>🔥 Poder: <b id="hud-poder">3</b></span>
+                <span>⚡ Vel: <b id="hud-vel">1.5</b></span>
+                <span>🤖 Bots Vivos: <b id="hud-bots">3</b></span>
+            </div>
+            <div class="canvas-wrapper">
+                <canvas id="bomberman-board" width="480" height="480"></canvas>
+                <div id="status-overlay" class="status-overlay hidden">
+                    <h2 id="overlay-title">GAME OVER</h2>
+                    <p id="overlay-subtitle">Presiona ESC o "Nueva Partida"</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Panel derecho: Ranking MySQL y Bitácora REGISTRO_INTERACCION -->
+        <section class="panel-side">
+            <div class="card">
+                <h2>🏆 Ranking Global (vw_desempeno_jugador)</h2>
+                <div class="table-scroll">
+                    <table id="tabla-ranking">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Usuario</th>
+                                <th>Partidas</th>
+                                <th>Pts</th>
+                                <th>V / D</th>
+                                <th>Ratio</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📡 Bitácora en Vivo (REGISTRO_INTERACCION)</h2>
+                <div class="table-scroll">
+                    <table id="tabla-interacciones">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Categoría</th>
+                                <th>Elemento / Detalle</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="bomberman_app.js"></script>
+</body>
+</html>

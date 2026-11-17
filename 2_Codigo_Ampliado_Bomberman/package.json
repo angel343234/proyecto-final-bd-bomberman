@@ -1,0 +1,16 @@
+{
+  "name": "bomberman-bd-uaa-equipo13",
+  "version": "1.0.0",
+  "description": "Videojuego Bomberman (jhoukem/Bomberman) ampliado con persistencia MySQL/MariaDB bajo arquitectura ANSI/SPARC - Proyecto Final Bases de Datos UAA (Equipo #13)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test-db": "node test_integration.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "mysql2": "^3.11.4"
+  }
+}
