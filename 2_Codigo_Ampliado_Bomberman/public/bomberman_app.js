@@ -460,39 +460,219 @@ function handleDamages(bomb) {
     }
 }
 
-function isDangerousCell(y, x) {
-    for (const b of activeBombs) {
-        if (b.x === x && Math.abs(b.y - y) <= b.power) return true;
-        if (b.y === y && Math.abs(b.x - x) <= b.power) return true;
+function computeDangerMap(extraBomb = null) {
+    const danger = Array.from({ length: SIZE }, () => Array(SIZE).fill(false));
+    const bombsToCheck = extraBomb ? [...activeBombs, extraBomb] : activeBombs;
+    const dirs = [
+        { dx: 0, dy: -1 },
+        { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 },
+        { dx: 1, dy: 0 }
+    ];
+
+    for (const b of bombsToCheck) {
+        danger[b.y][b.x] = true;
+        if (b.has_explode && b.flameCells) {
+            for (const fc of b.flameCells) {
+                danger[fc.y][fc.x] = true;
+            }
+            continue;
+        }
+        for (const d of dirs) {
+            for (let step = 1; step <= b.power; step++) {
+                const cy = wrapCoord(b.y + d.dy * step);
+                const cx = wrapCoord(b.x + d.dx * step);
+                const cell = grid[cy][cx];
+                if (cell.type === CELL_TYPE.WALL) break;
+                danger[cy][cx] = true;
+                if (cell.type === CELL_TYPE.WALL_BREAKABLE) break;
+            }
+        }
     }
-    return false;
+    return danger;
+}
+
+function bfsFindMove(startY, startX, goalPredicate, maxDepth = 12, allowDangerTraverse = false, dangerMap = null) {
+    const dMap = dangerMap || computeDangerMap();
+    const visited = Array.from({ length: SIZE }, () => Array(SIZE).fill(false));
+    const dirs = [
+        { dir: 0, dx: 0, dy: 1 },  // DOWN
+        { dir: 1, dx: -1, dy: 0 }, // LEFT
+        { dir: 2, dx: 1, dy: 0 },  // RIGHT
+        { dir: 3, dx: 0, dy: -1 }  // UP
+    ];
+    // Mezclar ligeramente el orden de direcciones para que los 3 bots no elijan patrones idénticos
+    for (let i = dirs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+    }
+
+    const queue = [];
+    visited[startY][startX] = true;
+
+    for (const d of dirs) {
+        const ny = wrapCoord(startY + d.dy);
+        const nx = wrapCoord(startX + d.dx);
+        if (grid[ny][nx].type !== CELL_TYPE.GROUND || grid[ny][nx].bomb) continue;
+        if (!allowDangerTraverse && dMap[ny][nx]) continue;
+        visited[ny][nx] = true;
+        queue.push({ y: ny, x: nx, firstDir: d.dir, dist: 1 });
+    }
+
+    while (queue.length > 0) {
+        const curr = queue.shift();
+        if (goalPredicate(curr.y, curr.x, curr.dist, dMap)) {
+            return { dir: curr.firstDir, dist: curr.dist };
+        }
+        if (curr.dist >= maxDepth) continue;
+
+        for (const d of dirs) {
+            const ny = wrapCoord(curr.y + d.dy);
+            const nx = wrapCoord(curr.x + d.dx);
+            if (visited[ny][nx]) continue;
+            if (grid[ny][nx].type !== CELL_TYPE.GROUND || grid[ny][nx].bomb) continue;
+            if (!allowDangerTraverse && dMap[ny][nx]) continue;
+            visited[ny][nx] = true;
+            queue.push({ y: ny, x: nx, firstDir: curr.firstDir, dist: curr.dist + 1 });
+        }
+    }
+    return null;
+}
+
+function canBotSafelyDropBomb(bot) {
+    if (bot.bomb_left <= 0 || grid[bot.gy][bot.gx].bomb) return false;
+    const simDanger = computeDangerMap({ x: bot.gx, y: bot.gy, power: bot.bomb_power, has_explode: false });
+    const escape = bfsFindMove(
+        bot.gy,
+        bot.gx,
+        (y, x, dist, dMap) => !dMap[y][x],
+        5,
+        true,
+        simDanger
+    );
+    return escape !== null && escape.dist <= 4;
+}
+
+function hasAdjacentTarget(bot) {
+    const dirs = [
+        { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 },
+        { dx: 1, dy: 0 },
+        { dx: 0, dy: -1 }
+    ];
+    let nearBreakable = false;
+    let nearEnemy = false;
+
+    for (const d of dirs) {
+        const ny = wrapCoord(bot.gy + d.dy);
+        const nx = wrapCoord(bot.gx + d.dx);
+        if (grid[ny][nx].type === CELL_TYPE.WALL_BREAKABLE) {
+            nearBreakable = true;
+        }
+        for (const p of players) {
+            if (!p.is_dead && p.id !== bot.id && Math.abs(p.gx - bot.gx) + Math.abs(p.gy - bot.gy) <= 2) {
+                nearEnemy = true;
+            }
+        }
+    }
+    return { nearBreakable, nearEnemy };
 }
 
 function updateAIBots() {
+    const dangerMap = computeDangerMap();
+
     for (let i = 1; i < NB_BOMBERMAN; i++) {
         const bot = players[i];
         if (bot.is_dead) continue;
         bot.aiCooldown++;
-        if (bot.aiCooldown < 18) continue;
+        // Si el bot está en peligro se mueve más rápido para escapar a tiempo
+        const requiredTicks = dangerMap[bot.gy][bot.gx] ? 8 : 13;
+        if (bot.aiCooldown < requiredTicks) continue;
         bot.aiCooldown = 0;
 
-        const dirs = [0, 1, 2, 3];
-        if (isDangerousCell(bot.gy, bot.gx)) {
-            // Modo defensivo (set_new_defense_goal en ai.c)
-            const safeDirs = dirs.filter(d => {
-                const nx = wrapCoord(bot.gx + (d === 1 ? -1 : d === 2 ? 1 : 0));
-                const ny = wrapCoord(bot.gy + (d === 3 ? -1 : d === 0 ? 1 : 0));
-                return grid[ny][nx].type === CELL_TYPE.GROUND && !grid[ny][nx].bomb && !isDangerousCell(ny, nx);
-            });
-            const chosen = safeDirs.length > 0 ? safeDirs[Math.floor(Math.random() * safeDirs.length)] : dirs[Math.floor(Math.random() * 4)];
-            moveBomberman(bot, chosen);
-        } else {
-            // Modo ofensivo (set_new_offense_goal en ai.c)
-            if (Math.floor(Math.random() * 10) === 0) {
-                dropBomb(bot);
+        // 1. MODO DEFENSIVO (set_new_defense_goal en ai.c): Si está en zona de explosión, huir por BFS a la celda segura más cercana
+        if (dangerMap[bot.gy][bot.gx]) {
+            const escapeMove = bfsFindMove(
+                bot.gy,
+                bot.gx,
+                (y, x, dist, dMap) => !dMap[y][x],
+                8,
+                true,
+                dangerMap
+            );
+            if (escapeMove) {
+                moveBomberman(bot, escapeMove.dir);
             }
-            const dir = dirs[Math.floor(Math.random() * dirs.length)];
-            moveBomberman(bot, dir);
+            continue;
+        }
+
+        // 2. MODO OFENSIVO TÁCTICO: Evaluar si conviene colocar una bomba (solo si tiene escape BFS garantizado)
+        const { nearBreakable, nearEnemy } = hasAdjacentTarget(bot);
+        if ((nearEnemy || (nearBreakable && Math.random() < 0.45)) && canBotSafelyDropBomb(bot)) {
+            dropBomb(bot);
+            // Inmediatamente dar el primer paso hacia la celda segura tras soltar la bomba
+            const postBombDanger = computeDangerMap();
+            const immediateEscape = bfsFindMove(
+                bot.gy,
+                bot.gx,
+                (y, x, dist, dMap) => !dMap[y][x],
+                6,
+                true,
+                postBombDanger
+            );
+            if (immediateEscape) {
+                moveBomberman(bot, immediateEscape.dir);
+            }
+            continue;
+        }
+
+        // 3. RECOLECCIÓN DE POWER-UPS SEGUROS CERCANOS (excluyendo MALUS)
+        const bonusMove = bfsFindMove(
+            bot.gy,
+            bot.gx,
+            (y, x) => grid[y][x].bonus && grid[y][x].bonus.code !== 'MALUS',
+            6,
+            false,
+            dangerMap
+        );
+        if (bonusMove) {
+            moveBomberman(bot, bonusMove.dir);
+            continue;
+        }
+
+        // 4. PERSECUCIÓN AL JUGADOR HUMANO O AVANCE HACIA MUROS DESTRUCTIBLES (sin pisar celdas peligrosas)
+        const human = players[0];
+        const huntMove = bfsFindMove(
+            bot.gy,
+            bot.gx,
+            (y, x) => {
+                if (human && !human.is_dead && Math.abs(x - human.gx) + Math.abs(y - human.gy) <= 1) {
+                    return true;
+                }
+                // Si el camino al jugador está cerrado por muros, acercarse a un WALL_BREAKABLE en dirección al jugador
+                const adjDirs = [{dx:0,dy:1},{dx:0,dy:-1},{dx:1,dy:0},{dx:-1,dy:0}];
+                return adjDirs.some(d => grid[wrapCoord(y + d.dy)][wrapCoord(x + d.dx)].type === CELL_TYPE.WALL_BREAKABLE);
+            },
+            14,
+            false,
+            dangerMap
+        );
+
+        if (huntMove) {
+            moveBomberman(bot, huntMove.dir);
+        } else {
+            // Movimiento de patrullaje seguro (nunca entra en dangerMap)
+            const safePatrol = bfsFindMove(
+                bot.gy,
+                bot.gx,
+                (y, x, dist) => dist >= 2,
+                4,
+                false,
+                dangerMap
+            );
+            if (safePatrol) {
+                moveBomberman(bot, safePatrol.dir);
+            }
         }
     }
 }
